@@ -49,4 +49,22 @@ var _ = Describe("RepeatableBuffer", func() {
 		Expect(longStrB).To(Equal(readall(origin)))
 		Expect("hello" + longStrA + longStrB).To(Equal(readall(fork)))
 	})
+
+	// run test with `ginkgo --race`
+	It("buffer and forks should not race with each other", func() {
+		N := 10
+		origin := NewRepeatableBuffer()
+
+		go func() {
+			for i := 0; i < N; i++ {
+				origin.Write([]byte(RandomString(i)))
+			}
+		}()
+		for i := 0; i < N; i++ {
+			go func() {
+				fork := origin.Fork()
+				readall(fork)
+			}()
+		}
+	})
 })

@@ -9,6 +9,7 @@ package buffer
 import (
 	"errors"
 	"io"
+	"sync"
 )
 
 // smallBufferSize is an initial allocation minimal capacity.
@@ -17,6 +18,8 @@ const smallBufferSize = 64
 // A Buffer is a variable-sized buffer of bytes with Read and Write methods.
 // The zero value for Buffer is an empty buffer ready to use.
 type Buffer struct {
+	mu sync.RWMutex
+
 	buf      []byte // contents are the bytes buf[off : len(buf)]
 	off      int    // read at &buf[off], write at &buf[len(buf)]
 	lastRead readOp // last read operation, so that Unread* can work correctly.
@@ -50,7 +53,12 @@ const maxInt = int(^uint(0) >> 1)
 // only until the next call to a method like Read, Write, Reset, or Truncate).
 // The slice aliases the buffer content at least until the next buffer modification,
 // so immediate changes to the slice will affect the result of future reads.
-func (b *Buffer) Bytes() []byte { return b.buf[b.off:] }
+func (b *Buffer) Bytes() []byte {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.buf[b.off:]
+}
 
 // AvailableBuffer returns an empty buffer with b.Available() capacity.
 // This buffer is intended to be appended to and
@@ -67,6 +75,9 @@ func (b *Buffer) String() string {
 		// Special case, useful in debugging.
 		return "<nil>"
 	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	return string(b.buf[b.off:])
 }
 
@@ -168,6 +179,9 @@ func (b *Buffer) Grow(n int) {
 // needed. The return value n is the length of p; err is always nil. If the
 // buffer becomes too large, Write will panic with ErrTooLarge.
 func (b *Buffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.lastRead = opInvalid
 	m, ok := b.tryGrowByReslice(len(p))
 	if !ok {
@@ -214,6 +228,9 @@ func growSlice(b []byte, n int) []byte {
 // buffer has no data to return, err is io.EOF (unless len(p) is zero);
 // otherwise it is nil.
 func (b *Buffer) Read(p []byte) (n int, err error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	b.lastRead = opInvalid
 	if b.empty() {
 		// Buffer is empty, reset to recover space.

@@ -4,35 +4,50 @@ import (
 	"io"
 )
 
-type RepeatableBuffer struct {
+type RepeatableBufferReader interface {
+	Bytes() []byte
+	String() string
+	Read(p []byte) (n int, err error)
+	Fork() *repeatableBufferFork
+}
+
+var (
+	_ RepeatableBufferReader = (*repeatableBufferImpl)(nil)
+	_ RepeatableBufferReader = (*repeatableBufferFork)(nil)
+)
+
+type repeatableBufferImpl struct {
 	Buffer
 }
 
-func NewRepeatableBuffer() *RepeatableBuffer {
-	return &RepeatableBuffer{}
+func NewRepeatableBuffer() *repeatableBufferImpl {
+	return &repeatableBufferImpl{}
 }
 
-func (rb *RepeatableBuffer) Fork() *RepeatableBufferFork {
-	return NewRepeatableBufferFork(&rb.Buffer, 0)
+func (rb *repeatableBufferImpl) Fork() *repeatableBufferFork {
+	return newRepeatableBufferFork(&rb.Buffer, 0)
 }
 
-type RepeatableBufferFork struct {
+type repeatableBufferFork struct {
 	origin *Buffer
 	off    int
 }
 
-func NewRepeatableBufferFork(buf *Buffer, off int) *RepeatableBufferFork {
-	return &RepeatableBufferFork{
+func newRepeatableBufferFork(buf *Buffer, off int) *repeatableBufferFork {
+	return &repeatableBufferFork{
 		origin: buf,
 		off:    off,
 	}
 }
 
-func (rbf *RepeatableBufferFork) empty() bool {
+func (rbf *repeatableBufferFork) empty() bool {
 	return len(rbf.origin.buf) <= rbf.off
 }
 
-func (rbf *RepeatableBufferFork) Read(p []byte) (n int, err error) {
+func (rbf *repeatableBufferFork) Read(p []byte) (n int, err error) {
+	rbf.origin.mu.RLock()
+	defer rbf.origin.mu.RUnlock()
+
 	if rbf.empty() {
 		if len(p) == 0 {
 			return 0, nil
@@ -44,14 +59,17 @@ func (rbf *RepeatableBufferFork) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (rbf *RepeatableBufferFork) Bytes() []byte {
+func (rbf *repeatableBufferFork) Bytes() []byte {
+	rbf.origin.mu.RLock()
+	defer rbf.origin.mu.RUnlock()
+
 	return rbf.origin.buf[rbf.off:]
 }
 
-func (rbf *RepeatableBufferFork) String() string {
+func (rbf *repeatableBufferFork) String() string {
 	return string(rbf.Bytes())
 }
 
-func (rbf *RepeatableBufferFork) Fork() *RepeatableBufferFork {
-	return NewRepeatableBufferFork(rbf.origin, 0)
+func (rbf *repeatableBufferFork) Fork() *repeatableBufferFork {
+	return newRepeatableBufferFork(rbf.origin, 0)
 }
