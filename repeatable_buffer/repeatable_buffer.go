@@ -4,6 +4,11 @@ import (
 	"io"
 )
 
+type RepeatableBuffer interface {
+	RepeatableBufferReader
+	Write(p []byte) (n int, err error)
+}
+
 type RepeatableBufferReader interface {
 	Bytes() []byte
 	String() string
@@ -12,7 +17,7 @@ type RepeatableBufferReader interface {
 }
 
 var (
-	_ RepeatableBufferReader = (*repeatableBufferImpl)(nil)
+	_ RepeatableBuffer       = (*repeatableBufferImpl)(nil)
 	_ RepeatableBufferReader = (*repeatableBufferFork)(nil)
 )
 

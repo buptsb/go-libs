@@ -25,9 +25,9 @@ var _ = Describe("RepeatableBuffer", func() {
 	It("origin and fork has independent offset internal state", func() {
 		origin := NewRepeatableBuffer()
 		origin.Write([]byte("hello"))
-		fork := origin.Fork()
-
 		Expect("hello").To(Equal(readall(origin)))
+
+		fork := origin.Fork()
 		Expect("hello").To(Equal(readall(fork)))
 	})
 
