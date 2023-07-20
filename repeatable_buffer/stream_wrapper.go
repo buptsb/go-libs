@@ -5,16 +5,20 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+
+	"github.com/nadoo/glider/pkg/pool"
 )
 
-type ForkReader interface {
+type RepeatableStreamWrapper interface {
 	Read(p []byte) (n int, err error)
 	Fork() *streamWrapperFork
+	Close() error
 }
 
 var (
-	_ ForkReader    = (*streamWrapper)(nil)
-	_ io.ReadCloser = (*streamWrapperFork)(nil)
+	_ RepeatableStreamWrapper = (*streamWrapper)(nil)
+	_ RepeatableStreamWrapper = (*streamWrapperFork)(nil)
+	_ io.ReadCloser           = (*streamWrapperFork)(nil)
 )
 
 type simpleBroadcaster struct {
@@ -90,7 +94,8 @@ func (sw *streamWrapper) doRead() {
 	if err := sw.rerr.Load(); err != nil {
 		return
 	}
-	p := make([]byte, 1024)
+	p := pool.GetBuffer(4096)
+	defer pool.PutBuffer(p)
 	n, err := sw.r.Read(p)
 	sw.buf.Write(p[:n])
 	if err != nil {
