@@ -3,7 +3,6 @@ package buffer
 import (
 	"context"
 	"io"
-	"sync"
 	"sync/atomic"
 
 	"github.com/nadoo/glider/pkg/pool"
@@ -20,42 +19,6 @@ var (
 	_ RepeatableStreamWrapper = (*streamWrapperFork)(nil)
 	_ io.ReadCloser           = (*streamWrapperFork)(nil)
 )
-
-type simpleBroadcaster struct {
-	mu  sync.RWMutex
-	chs []chan struct{}
-}
-
-func (b *simpleBroadcaster) Notify() {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	for _, ch := range b.chs {
-		select {
-		case ch <- struct{}{}:
-		default:
-		}
-	}
-}
-
-func (b *simpleBroadcaster) Register() <-chan struct{} {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	ch := make(chan struct{})
-	b.chs = append(b.chs, ch)
-	return ch
-}
-
-func (b *simpleBroadcaster) CloseAll() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	for _, c := range b.chs {
-		close(c)
-	}
-	b.chs = nil
-}
 
 type streamWrapper struct {
 	r     io.Reader
@@ -122,7 +85,6 @@ func (sw *streamWrapper) Fork() *streamWrapperFork {
 }
 
 func (sw *streamWrapper) cancel() error {
-	// fmt.Println("cancel")
 	sw.setError(context.Canceled)
 	return nil
 }
@@ -157,7 +119,6 @@ func (swf *streamWrapperFork) Read(p []byte) (n int, err error) {
 			return n, nil
 		}
 		if rerr := origin.rerr.Load(); rerr != nil {
-			// fmt.Println("rerr", rerr)
 			n2, err := swf.buf.Read(p)
 			if err == nil {
 				return n2, nil
